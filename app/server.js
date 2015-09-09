@@ -12,22 +12,17 @@ var fs = require('fs'),
     bodyParser = require('body-parser'),
     AWS = require('aws-sdk'),
     BinaryServer = require('binaryjs').BinaryServer,
-    streamArr = [],
     config = require('../config'),
-    Logger = require('./util/logger'),clients = {},
+    Logger = require('./util/logger'), clients = [],
 
-    bs  = new BinaryServer({port: config.binary.port}),
+    bs = new BinaryServer({port: config.binary.port}),
     app = express(),
     router = express.Router(),
     hasher = new Hashid(config.hashid.salt, config.hashid.length),
-//cache = redis.createClient(config.redis.port, config.redis.host),
     cache = redis.createClient(),
     dir = path.join(__dirname, config.server.root),
     log = new Logger(),
-    s3 = new AWS.S3({
-        accessKeyId: config.aws.access,
-        secretAccessKey: config.aws.secret
-    });
+    s3 = new AWS.S3({accessKeyId: config.aws.access, secretAccessKey: config.aws.secret});
 
 
 fs.mkdir(dir, function (err) {
@@ -161,32 +156,14 @@ if (config.ssl.enabled) {
     http.createServer(app).listen(config.server.port);
 }
 
-bs.on('connection', function (client){
-    /*streamArr.push(client);
-    var pipeArr = [];
-    client.on('stream', function(stream) {
-        for (var i = 0; i < streamArr.length; i++) {
-            var streams1 = streamArr[i];
-            if (streams1.id != client.id && streams1.id != null )  {
-                var responseStream = streams1.createStream('fromserver');
-                pipeArr.push(responseStream);
-                for (var i = 0; i < pipeArr.length; i++) {
-                    var pipes = pipeArr[i];
-                    stream.pipe(pipes);
-                }
-
-
-            }
-        }
-    });*/
-
+bs.on('connection', function (client) {
     clients[client.id] = {client: client};
     client.on('stream', function (data, meta) {
         var received = JSON.parse(meta);
         data.on('data', function (data) {
             for (var c in clients) {
-                if(clients.hasOwnProperty(c)) {
-                    if(c.toString() !== client.id.toString()) {
+                if (clients.hasOwnProperty(c)) {
+                    if (c.toString() !== client.id.toString()) {
                         received['id'] = client.id.toString();
                         clients[c]['client'].send(data, JSON.stringify(received));
                     }
@@ -194,11 +171,10 @@ bs.on('connection', function (client){
             }
         });
     });
-
-    client.on('close', function() {
+    client.on('close', function () {
         delete clients[client.id];
         for (var c in clients) {
-            if(clients.hasOwnProperty(c)) {
+            if (clients.hasOwnProperty(c)) {
                 clients[c]['client'].send("Disconnected", JSON.stringify({id: client.id, action: 'disconnect'}));
             }
         }

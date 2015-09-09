@@ -26,7 +26,9 @@
   </header>
 
   <div><canvas class="camera" id="sender" style="display: none"></canvas></div>
-  <ul id="timeloglist"></ul>
+  <ul id="timeloglist">
+    <div id="canvasList"></div>
+  </ul>
 
   <footer>
     <hr>
@@ -42,7 +44,6 @@
         <video class="camera" id="webc" autoplay
                style="width: 640px; height: 480px; transform-origin: 0px 0px 0px; transform: scaleX(0.5) scaleY(0.5);"></video>
       </div>
-
     </div>
 
     <button id="snapit">Snap It</button>
@@ -55,7 +56,6 @@
 
 <script src="./vendor/datepickr.min.js"></script>
 <script src="./vendor/binary.js"></script>
-<script src="./vendor/main.js"></script>
 <script src="./vendor/gifshot.min.js"></script>
 <script src="./script.js?ver=0.2.0"></script>
 

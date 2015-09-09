@@ -3,7 +3,6 @@
 var previousDate,
     binaryClient = new BinaryClient('ws://localhost:9000'),
     currentDate = new Date(),
-    //imageData,
     xmlhttp = new XMLHttpRequest(),
     logit = document.getElementById('logit'),
     snapit = document.getElementById('snapit'),
@@ -17,8 +16,7 @@ var previousDate,
     timeloglist = document.getElementById('timeloglist'),
     video = document.querySelector('#webc'),
     senderEl = document.getElementById('sender'),
-    list = document.createElement('li'),
-    localStream,
+    div = document.getElementById('canvasList'),
     gifSupport = gifshot.isWebCamGIFSupported(),
     logitem = '<div class="time">{{time}}</div><hr>' +
         '<div class="selfie"><img id="img" class="camera" src="{{url}}"></div>',
@@ -27,14 +25,11 @@ var previousDate,
         'August', 'September', 'October',
         'November', 'December'],
 
-audioContext = window.AudioContext || window.webkitAudioContext, webcam = {},
-    context = new audioContext(), sampleRate, volume, audioInput, recorder, recordingLength = 0,recording,
+    audioContext = window.AudioContext || window.webkitAudioContext, webcam = {}, localStream,
+    context = new audioContext(), sampleRate, volume, audioInput, recorder, recordingLength = 0, recording,
     audioStack = [], nextTime = 0, recorded = false, leftchannel = [], rightchannel = [], init = 0,
-    receiverEl = document.createElement('canvas'),
-     receiverContext = receiverEl.getContext('2d'),
-     receiverDataLength = 200 * 160 * 4,
-     receiverPos = 0,
-     imageFrame = receiverContext.getImageData(0, 0, 200, 160);
+    receiverPos = 0, receiverDataLength = 100 * 100 * 4, myCanvas = {}, set = new Set();
+
 
 navigator.getUserMedia =
     navigator.getUserMedia ||
@@ -137,13 +132,13 @@ function snapIt() {
 }
 
 function cancelIt() {
-
     if (snapit.style.display === 'inline-block') {
         newlogmodal.style.display = 'none';
         video.pause();
         localStream.stop();
         recording = false;
-        binaryClient.send('', JSON.stringify({action: "disconnect"}));
+        binaryClient.send('', JSON.stringify({action: "Remove"}));
+        document.location.reload(true);
     } else {
         preview.style.visibility = 'hidden';
         snapit.style.display = 'inline-block';
@@ -153,9 +148,9 @@ function cancelIt() {
 }
 
 function playByteArray(arrayBuffer) {
-    context.decodeAudioData(arrayBuffer, function(buffer) {
+    context.decodeAudioData(arrayBuffer, function (buffer) {
         audioStack.push(buffer);
-        if((init != 0 || (audioStack.length > 10))) {
+        if ((init != 0 || (audioStack.length > 10))) {
             init++;
             scheduleBuffers();
         }
@@ -177,30 +172,26 @@ function scheduleBuffers() {
 }
 
 function newTimeLog() {
-
     preview.style.visibility = 'hidden';
     snapit.style.display = 'inline-block';
     logit.style.display = 'none';
     upload.innerText = '';
     cancel.style.display = 'inline-block';
     newlogmodal.style.display = 'table-cell';
-
     if (navigator.getUserMedia) {
-        navigator.getUserMedia({audio: true, video: true}, success,onVideoFail);
+        navigator.getUserMedia({audio: true, video: true}, success, onVideoFail);
     }
     else {
-        alert ('failed');
+        alert('failed');
     }
 }
 
-function grabLoop(){
-
+function grabLoop() {
     var senderContext = senderEl.getContext('2d');
     try {
-        senderContext.drawImage(video, 0, 0, 200, 160);
+        senderContext.drawImage(video, 0, 0, 100, 100);
     } catch (e) {}
-
-     var imageData = senderContext.getImageData(0, 0, 200, 160);
+    var imageData = senderContext.getImageData(0, 0, 100, 100);
     if (typeof stream !== 'undefined') {
         stream.write(imageData.data);
     }
@@ -213,16 +204,11 @@ function onVideoFail(e) {
 };
 
 function success(stream) {
-    //var video = document.createElement('video');
-    //video.class = 'camera';
-    //video.style.cssText = 'width: 640px; height: 480px; transform-origin: 0px 0px 0px; transform: scaleX(0.5) scaleY(0.5);';
     webcam['stream'] = stream;
     webcam['video'] = document.querySelector("#webcam").appendChild(video);
-    video.src =  window.URL.createObjectURL(stream) || window.webkitURL.createObjectURL(stream);
+    video.src = window.URL.createObjectURL(stream) || window.webkitURL.createObjectURL(stream);
     localStream = stream;
     video.muted = true;
-    //video.play();
-
     sampleRate = context.sampleRate;
     volume = context.createGain();
     audioInput = context.createMediaStreamSource(stream);
@@ -230,29 +216,31 @@ function success(stream) {
     var bufferSize = 2048;
     recorder = context.createScriptProcessor(bufferSize, 2, 2);
     recording = true;
-    recorder.onaudioprocess = function(stream){
-        //if (recording) {
-        var left = stream.inputBuffer.getChannelData(0);
-        var right = stream.inputBuffer.getChannelData(1);
-        leftchannel.push(new Float32Array(left));
-        rightchannel.push(new Float32Array(right));
-        recordingLength += bufferSize;
-        decodeToPlay();
-        leftchannel.length = rightchannel.length = 0;
-        recordingLength = 0;
-        //}
+    recorder.onaudioprocess = function (stream) {
+        if (recording) {
+            var left = stream.inputBuffer.getChannelData(0);
+            var right = stream.inputBuffer.getChannelData(1);
+            leftchannel.push(new Float32Array(left));
+            rightchannel.push(new Float32Array(right));
+            recordingLength += bufferSize;
+            decodeToPlay();
+            leftchannel.length = rightchannel.length = 0;
+            recordingLength = 0;
+        }
     }
-    volume.connect (recorder);
-    recorder.connect (context.destination);
+    volume.connect(recorder);
+    recorder.connect(context.destination);
     setTimeout(grabLoop(), 50);
+}
 
-
+window.onbeforeunload = function () {
+    binaryClient.send('', JSON.stringify({action: "disconnected"}));
 }
 
 function decodeToPlay() {
-    var leftBuffer = mergeBuffers ( leftchannel, recordingLength );
-    var rightBuffer = mergeBuffers ( rightchannel, recordingLength );
-    var interleaved = interleave ( leftBuffer, rightBuffer );
+    var leftBuffer = mergeBuffers(leftchannel, recordingLength);
+    var rightBuffer = mergeBuffers(rightchannel, recordingLength);
+    var interleaved = interleave(leftBuffer, rightBuffer);
     var buffer = new ArrayBuffer(44 + interleaved.length * 2);
     var view = new DataView(buffer);
     writeUTFBytes(view, 0, 'RIFF');
@@ -271,30 +259,26 @@ function decodeToPlay() {
     var lng = interleaved.length;
     var index = 44;
     var volume = 1;
-    for (var i = 0; i < lng; i++){
+    for (var i = 0; i < lng; i++) {
         view.setInt16(index, interleaved[i] * (0x7FFF * volume), true);
         index += 2;
     }
-    //var uint8Array  = new Uint8Array([view, imageData.data]);
-    //var arrayBuffer = uint8Array.buffer;
-    //var blob        = new Blob([arrayBuffer]);
-
-    var blob = new Blob ( [ view ], { type : 'audio/wav' });
+    var blob = new Blob([view], {type: 'audio/wav'});
     binaryClient.send(blob, JSON.stringify({action: "sendAudio"}));
 }
 
-function writeUTFBytes(view, offset, string){
+function writeUTFBytes(view, offset, string) {
     var lng = string.length;
-    for (var i = 0; i < lng; i++){
+    for (var i = 0; i < lng; i++) {
         view.setUint8(offset + i, string.charCodeAt(i));
     }
 }
 
-function mergeBuffers(channelBuffer, recordingLength){
+function mergeBuffers(channelBuffer, recordingLength) {
     var result = new Float32Array(recordingLength);
     var offset = 0;
     var lng = channelBuffer.length;
-    for (var i = 0; i < lng; i++){
+    for (var i = 0; i < lng; i++) {
         var buffer = channelBuffer[i];
         result.set(buffer, offset);
         offset += buffer.length;
@@ -302,19 +286,17 @@ function mergeBuffers(channelBuffer, recordingLength){
     return result;
 }
 
-
-function interleave(leftChannel, rightChannel){
+function interleave(leftChannel, rightChannel) {
     var length = leftChannel.length + rightChannel.length;
     var result = new Float32Array(length);
     var inputIndex = 0;
-    for (var index = 0; index < length; ){
+    for (var index = 0; index < length;) {
         result[index++] = leftChannel[inputIndex];
         result[index++] = rightChannel[inputIndex];
         inputIndex++;
     }
     return result;
 }
-
 
 window.onload = function () {
     picker.value = monthNames[currentDate.getMonth()] +
@@ -336,58 +318,89 @@ picker.onblur = function () {
 
 datepickr(picker);
 
-function listImage(dataArr) {
-
-        for (var i = 0, len = dataArr.length; i < len; i++) {
-            imageFrame.data[receiverPos] = dataArr[i];
-            receiverPos++;
-            if (receiverPos % receiverDataLength === 0) {
-                receiverPos = 0;
-                receiverContext.putImageData(imageFrame, 0, 0);
-                imageFrame.data[receiverPos] = dataArr[i]
-            }
+function listImage(dataArr, id) {
+    var ids = myCanvas[id];
+    var res = ids['resC'];
+    var canvas = ids['canvas'];
+    var cId = ids['cId'];
+    var image = ids['image'];
+    var context = ids['resContext'];
+    for (var i = 0, len = dataArr.length; i < len; i++) {
+        image.data[res] = dataArr[i];
+        res++;
+        if (res % receiverDataLength === 0) {
+            res = 0;
+            context.putImageData(image, 0, 0);
+            image.data[res] = dataArr[i];
         }
-        //document.body.appendChild(receiverEl);
-        //list.innerHTML = '<div class="time">Live</div><hr><div class="selfie">' + document.body.appendChild(receiverEl) + '</div>';
-        timeloglist.appendChild(receiverEl);
-        timeloglist.insertBefore(receiverEl, timeloglist.firstChild);
-    //list.innerHTML = logitem.replace
-    //receiverEl.style.cssText = 'position:absolute;top:0; left:0;width:100px; height:100px;';
-
+    }
+    ids['resC'] = res;
+    myCanvas[id] = ids;
 }
 
-binaryClient.on('open', function (s) {
-    binaryClient.send("New connection", JSON.stringify({action: "connect"}));
+function createcanvas(id) {
+    var canv = document.createElement('canvas');
+    canv.setAttribute('id','live' + id + 'cam');
+    div.appendChild(canv);
+}
+
+function createAttr(id) {
+    var canvasId = document.getElementById('live' + id + 'cam');
+    var receiverContext = canvasId.getContext('2d');
+    var imageFrame = receiverContext.getImageData(0, 0, 100, 100);
+    var content = {
+        'image': imageFrame,
+        'resContext': receiverContext,
+        'resC': receiverPos,
+        'cId': canvasId
+    }
+    myCanvas[id] = content;
+}
+
+function removeCanvas(ids){
+    var canv =  myCanvas[ids];
+    var canvasId = canv['cId'];
+    canvasId.getContext('2d').clearRect(0,0,100,100);
+    canvasId.remove();
+    delete canv[ids];
+}
+
+binaryClient.on('open', function () {
+    binaryClient.send('New connection', JSON.stringify({action: "connect"}));
 });
 
 binaryClient.on('stream', function (stream, meta) {
-    console.log(meta);
     var received = JSON.parse(meta);
-    stream.on('data', function(data) {
-        if(received.action) {
-            if(received.action === 'connect') {
-                if(received.id) {
+    stream.on('data', function (data) {
+        if (received.action) {
+            if (received.action === 'connect') {
+                if (received.id) {
                     console.log("Client " + received.id + " connected.");
                     var dataArr = new Uint8Array(data);
                 }
-            } else if(received.action === 'disconnect') {
-                if(received.id) {
+            } else if (received.action === 'disconnect') {
+                if (received.id) {
                     console.log("Client " + received.id + " disconnected.");
-                    document.location.reload(true);
                 }
-            } else if(received.action === 'sendAudio') {
+            } else if (received.action === 'sendAudio') {
                 var dataArr = new Uint8Array(data);
-                if(received.id) {
+                if (received.id) {
                     if (!recorded) {
                         console.log("Client " + received.id + " is recording.");
                         recorded = true;
                     }
                     playByteArray(data);
                 }
-            } else if(received.action === 'sendVideo') {
+            } else if (received.action === 'sendVideo') {
+                if(set.has(received.id) != true){
+                    set.add(received.id);
+                    createcanvas(received.id);
+                    createAttr(received.id);
+                }
                 var dataArr = new Uint8Array(data);
-                listImage(dataArr);
-
+                listImage(dataArr, received.id);
+            } else if(received.action === 'Remove'){
+                removeCanvas(received.id);
             }
         }
     });
